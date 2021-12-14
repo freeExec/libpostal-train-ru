@@ -65,14 +65,25 @@ class HealthcareLicensesRUFormatter(object):
         ('unit', AddressFormatter.UNIT),
     ])
 
+    district_tokens = [
+        u'район',
+        u'с/с',
+    ]
+
     city_tokens = [
         u'г.',
-        u'город'
+        u'город',
+        u'пгт',
+        u'п.г.т.',
+        u'с.',
     ]
 
     suburb_tokens = [
         u'мкр',
-        u'район'
+        u'р-н',
+        u'р-он',
+        u'район',
+        u'микрорайон',
     ]
 
     unit_tokens = [
@@ -82,6 +93,7 @@ class HealthcareLicensesRUFormatter(object):
         u'кв.',
         u'к.',
         u'пом',
+        u'нп',
     ]
 
     MIN_TOKEN_START = 65535
@@ -117,6 +129,24 @@ class HealthcareLicensesRUFormatter(object):
 
         return components
 
+    def try_move_district_from_street(self, components):
+        composite_street = components.get(AddressFormatter.ROAD, None)
+        if not composite_street:
+            return components
+
+        idx_first_sep = composite_street.find(",")
+        if idx_first_sep == -1:
+            return components
+
+        disctrict = composite_street[:idx_first_sep]
+        for token in self.district_tokens:
+            if disctrict.find(token) != -1:
+                components[AddressFormatter.ROAD] = composite_street[idx_first_sep + 1:].strip()
+                components[AddressFormatter.STATE_DISTRICT] = disctrict
+                break
+
+        return components
+
     def try_move_suburb_from_street(self, components):
         composite_street = components.get(AddressFormatter.ROAD, None)
         if not composite_street:
@@ -129,7 +159,7 @@ class HealthcareLicensesRUFormatter(object):
         suburb = composite_street[:idx_first_sep]
         for token in self.suburb_tokens:
             if suburb.find(token) != -1:
-                components[AddressFormatter.ROAD] = composite_street[idx_first_sep:]
+                components[AddressFormatter.ROAD] = composite_street[idx_first_sep + 1:].strip()
                 components[AddressFormatter.CITY_DISTRICT] = suburb
                 break
 
@@ -204,9 +234,17 @@ class HealthcareLicensesRUFormatter(object):
             if components:
                 components = self.fix_component_encodings(components)
 
+                index = components.get(AddressFormatter.POSTCODE, None)
+                if index == "0":
+                    components.pop(AddressFormatter.POSTCODE)
+
                 city = components.get(AddressFormatter.CITY, None)
                 if city is None:
+                    components = self.try_move_district_from_street(components)
                     components = self.try_move_city_from_street(components)
+
+                city = components.get(AddressFormatter.CITY, None)
+                if city:
                     components = self.try_move_suburb_from_street(components)
 
                 composite = components.get(AddressFormatter.ROAD, None)
@@ -218,6 +256,9 @@ class HealthcareLicensesRUFormatter(object):
                         components[AddressFormatter.HOUSE_NUMBER] = house_number
                         components = self.try_move_unit_from_house_number(components)
 
+                if len(components) == 1 and AddressFormatter.STATE in components.keys():
+                    continue
+
                 yield tuple(components.get(v, '') for v in self.field_map.values())
 
 
@@ -228,14 +269,17 @@ class HealthcareLicensesRUFormatter(object):
         writer.writerow(self.field_map.keys())
 
         i = 0
-        for post_code, region, district, city, suburb, street, house_number, unit in self.formatted_addresses(infile):
+        #for post_code, region, district, city, suburb, street, house_number, unit in self.formatted_addresses(infile):
+        for columns in self.formatted_addresses(infile):
             #if not formatted_address or not formatted_address.strip():
             #    continue
 
-            street = street.replace('"', '')
-            house_number = house_number.replace('"', '')
+            row = []
+            for col in columns:
+                col = col.replace('"', '')
+                col = tsv_string(col)
+                row.append(col)
 
-            row = [tsv_string(post_code), tsv_string(region), tsv_string(district), tsv_string(city), tsv_string(suburb), tsv_string(street), tsv_string(house_number), tsv_string(unit)]
             writer.writerow(row)
             i += 1
             if i % 1000 == 0 and i > 0:
