@@ -1,2 +1,6 @@
 .vs/
 *.pyc
+
+
+# RAW data
+data/fed_med_nadzor/data-20211128-structure-20210307.xml*
