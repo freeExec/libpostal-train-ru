@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
 
+# version 0.3 freeExec 2022
+
+
 import argparse
 import os
 
@@ -141,6 +144,12 @@ class OSMAddressRUFormatter(object):
         ])
     )
 
+    prefix_housenumber = [
+        'д.',
+        'д',
+        'дом',
+    ]
+
     def __init__(self):
         self.config = yaml.safe_load(open(OSM_PARSER_DATA_DEFAULT_CONFIG))
         self.formatter = AddressFormatter(scratch_dir=os.environ['TEMP'])
@@ -157,6 +166,8 @@ class OSMAddressRUFormatter(object):
     address_only_probability = 0.4
     drop_address_probability = 0.6
     drop_address_and_postcode_probability = 0.1
+
+    add_prefix_housenumber_probability = 0.3
 
     abbreviate_city_probability = 0.3
     abbreviate_state_district_probability = 0.4
@@ -192,11 +203,11 @@ class OSMAddressRUFormatter(object):
         address_components = {k: v for k, v in six.iteritems(address_components) if k in AddressFormatter.address_formatter_fields}
         return address_components
 
-    def normalize_sub_building_components(self, tags):
-        sub_building_components = {k: v for k, v in six.iteritems(tags) if self.sub_building_aliases.get(k) and is_numeric(v)}
-        self.aliases.replace(sub_building_components)
-        sub_building_components = {k: v for k, v in six.iteritems(sub_building_components) if k in AddressFormatter.address_formatter_fields}
-        return sub_building_components
+    #def normalize_sub_building_components(self, tags):
+    #    sub_building_components = {k: v for k, v in six.iteritems(tags) if self.sub_building_aliases.get(k) and is_numeric(v)}
+    #    self.aliases.replace(sub_building_components)
+    #    sub_building_components = {k: v for k, v in six.iteritems(sub_building_components) if k in AddressFormatter.address_formatter_fields}
+    #    return sub_building_components
 
     def normalized_street_name(self, address_components, country=None, language=None):
         street = address_components.get(AddressFormatter.ROAD)
@@ -208,6 +219,11 @@ class OSMAddressRUFormatter(object):
                 return street
 
         return None
+
+    def added_prefix_housenumber(self, housenumber):
+        if random.random() < add_prefix_housenumber_probability:
+            housenumber = random.choice(prefix_housenumber) + ' ' + housenumber
+        return housenumber
 
     def normalize_city_name(self, city_name, tags):
         official_status = tags.get('addr:city_official_status')
@@ -284,23 +300,53 @@ class OSMAddressRUFormatter(object):
 
         raise NotImplementedError("skip code")
 
+    def components_expanded(self, address_components, country):
+
+        candidate_languages = get_country_languages(country).items()
+        language = candidate_languages[0][0]
+
+        self.components.abbreviate_admin_components(address_components, country, language)
+
+        street = address_components.get(AddressFormatter.ROAD)
+        if street:
+            norm_street = self.components.strip_unit_phrases_for_language(street, language)
+            address_components[AddressFormatter.ROAD] = norm_street
+            street = norm_street
+
+        self.components.replace_name_affixes(address_components, language, country=country)
+
+        self.components.replace_names(address_components)
+
+        self.components.prune_duplicate_names(address_components)
+
+        self.components.cleanup_house_number(address_components)
+
+        self.components.add_postcode_phrase(address_components, language, country=country)
+
+        self.components.normalize_sub_building_components(address_components, language, country=country)
+
+        self.components.add_house_number_phrase(address_components, language, country=country)
+
+        self.components.drop_invalid_components(address_components, country)
+
+        self.components.add_genitives(address_components, language)
+
+        return address_components, country, language
+
     def formatted_addresses(self, tags, tag_components=True):
 
         #osm_components = self.components.osm_reverse_geocoded_components(latitude, longitude)
         osm_components = tags
         #country, candidate_languages = self.components.osm_country_and_languages(osm_components)
         country = Countries.RUSSIA
-        candidate_languages = get_country_languages(country).items()
 
-        all_local_languages = set([l for l, d in candidate_languages])
+        #all_local_languages = set([l for l, d in candidate_languages])
 
         # In the UK sometimes streets have "parent" streets and
         #combined_street = self.combine_street_name(tags)
 
         # random other language
         #namespaced_language = self.namespaced_language(tags, candidate_languages)
-
-        language = None
 
         # railway station or postoffice
         #is_generic_place = self.is_generic_place(tags)
@@ -357,19 +403,17 @@ class OSMAddressRUFormatter(object):
 
         revised_tags = self.fix_component_encodings(revised_tags)
 
-        #address_components, country, language = self.components.expanded(revised_tags, 90, 180, language=language,
-        #                                                            num_floors=num_floors, num_basements=num_basements,
-        #                                                            add_sub_building_components=add_sub_building_components,
-        #                                                            population_from_city=True, check_city_wikipedia=True, osm_components=osm_components)
-
-        address_components = revised_tags
-        language = candidate_languages[0][0]
+        address_components, country, language = self.components_expanded(revised_tags, country)
 
         #languages = list(country_languages[country])
         #venue_names = self.venue_names(tags, languages) or []
 
         #conscription_number = self.conscription_number(tags, language, country)
         #austro_hungarian_street_number = self.austro_hungarian_street_number(tags, language, country)
+
+        #housenumber = address_components.get(AddressFormatter.HOUSE_NUMBER)
+        #if housenumber:
+        #    housenumber = added_prefix_housenumber(housenumber)
 
         # Abbreviate the street name with random probability
         street_name = address_components.get(AddressFormatter.ROAD)
@@ -484,6 +528,7 @@ class OSMAddressRUFormatter(object):
             if i % 1000 == 0 and i > 0:
                 formatted_tagged_file.flush()
                 print('did {} formatted addresses'.format(i))
+                #break
 
         print("KONEC")
 
