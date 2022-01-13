@@ -263,3 +263,5 @@ if __name__ == '__main__':
     if args.tsv_ru_file and args.format:
         hl_formatter = HealthcareLicensesRUFormatter()
         hl_formatter.build_training_data(args.tsv_ru_file, args.out_dir, tag_components=not args.untagged)
+    else:
+        print(parser.format_usage())
