@@ -45,34 +45,6 @@ csv.register_dialect('csv_no_quote', delimiter=';', quoting=csv.QUOTE_NONE, quot
 OSM_PARSER_DATA_DEFAULT_CONFIG = os.path.join(this_dir, os.pardir, os.pardir, os.pardir,
                                               'resources', 'parser', 'data_sets', 'osm.yaml')
 
-NAME_KEYS = (
-    'name',
-    'addr:housename',
-)
-
-HOUSE_NUMBER_KEYS = (
-    'addr:house_number',
-    'addr:housenumber',
-    'house_number'
-)
-
-COUNTRY_KEYS = (
-    'country',
-    'country_name',
-    'addr:country',
-    'is_in:country',
-    'addr:country_code',
-    'country_code',
-    'is_in:country_code'
-)
-
-POSTAL_KEYS = (
-    'postcode',
-    'postal_code',
-    'addr:postcode',
-    'addr:postal_code',
-)
-
 #class AddressComponentsSimple(object):
     #def __init__(self):
         #self.setup_component_dependencies()
@@ -133,27 +105,15 @@ class OSMAddressRUFormatter(object):
         ])
     )
 
-    sub_building_aliases = Aliases(
-        OrderedDict([
-            ('level', AddressFormatter.LEVEL),
-            ('addr:floor', AddressFormatter.LEVEL),
-            ('addr:unit', AddressFormatter.UNIT),
-            ('addr:flats', AddressFormatter.UNIT),
-            ('addr:door', AddressFormatter.UNIT),
-            ('addr:suite', AddressFormatter.UNIT),
-        ])
-    )
-
-    prefix_housenumber = [
-        'д.',
-        'д',
-        'дом',
+    country_names = [
+        'РФ',
+        'Россия',
+        'Российская Федерация',
     ]
 
     def __init__(self):
         self.config = yaml.safe_load(open(OSM_PARSER_DATA_DEFAULT_CONFIG))
         self.formatter = AddressFormatter(scratch_dir=os.environ['TEMP'])
-        #self.components = AddressComponentsSimple()
         self.components = AddressComponents(None, None, None)
 
     component_validators = {
@@ -167,7 +127,7 @@ class OSMAddressRUFormatter(object):
     drop_address_probability = 0.6
     drop_address_and_postcode_probability = 0.1
 
-    add_prefix_housenumber_probability = 0.3
+    add_country_probability = 0.01
 
     abbreviate_city_probability = 0.3
     abbreviate_state_district_probability = 0.4
@@ -203,12 +163,6 @@ class OSMAddressRUFormatter(object):
         address_components = {k: v for k, v in six.iteritems(address_components) if k in AddressFormatter.address_formatter_fields}
         return address_components
 
-    #def normalize_sub_building_components(self, tags):
-    #    sub_building_components = {k: v for k, v in six.iteritems(tags) if self.sub_building_aliases.get(k) and is_numeric(v)}
-    #    self.aliases.replace(sub_building_components)
-    #    sub_building_components = {k: v for k, v in six.iteritems(sub_building_components) if k in AddressFormatter.address_formatter_fields}
-    #    return sub_building_components
-
     def normalized_street_name(self, address_components, country=None, language=None):
         street = address_components.get(AddressFormatter.ROAD)
         if street and ',' in street:
@@ -220,10 +174,9 @@ class OSMAddressRUFormatter(object):
 
         return None
 
-    def added_prefix_housenumber(self, housenumber):
-        if random.random() < add_prefix_housenumber_probability:
-            housenumber = random.choice(prefix_housenumber) + ' ' + housenumber
-        return housenumber
+    def added_country(self, address_components):
+        if random.random() < self.add_country_probability:
+            address_components[AddressFormatter.COUNTRY] = random.choice(self.country_names)
 
     def normalize_city_name(self, city_name, tags):
         official_status = tags.get('addr:city_official_status')
@@ -304,6 +257,8 @@ class OSMAddressRUFormatter(object):
 
         candidate_languages = get_country_languages(country).items()
         language = candidate_languages[0][0]
+
+        self.added_country(address_components)
 
         self.components.abbreviate_admin_components(address_components, country, language)
 
