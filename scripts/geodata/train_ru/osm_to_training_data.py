@@ -45,12 +45,6 @@ csv.register_dialect('csv_no_quote', delimiter=';', quoting=csv.QUOTE_NONE, quot
 OSM_PARSER_DATA_DEFAULT_CONFIG = os.path.join(this_dir, os.pardir, os.pardir, os.pardir,
                                               'resources', 'parser', 'data_sets', 'osm.yaml')
 
-#class AddressComponentsSimple(object):
-    #def __init__(self):
-        #self.setup_component_dependencies()
-
-        #self.setup_valid_scripts()
-
 
 class OSMAddressRUFormatter(object):
     aliases = Aliases(
@@ -105,10 +99,38 @@ class OSMAddressRUFormatter(object):
         ])
     )
 
+    some_state_aliases = OrderedDict([
+            (u'Адыгея', [u'Республика Адыгея']),
+            (u'Башкортостан', [u'Башкирия', u'Республика Башкортостан']),
+            (u'Республика Бурятия', [u'Бурятия']),
+            (u'Дагестан', [u'Республика Дагестан']),  # поломана граница
+            (u'Ингушетия', [u'Республика Ингушетия']),
+            (u'Мордовия', [u'Республика Мордовия']),
+            (u'Кабардино-Балкария', [u'Кабардино-Балкарская Республика']),
+            (u'Калмыкия', [u'Республика Калмыкия']),
+            (u'Камчатский край', [u'Камчатка']),
+            (u'Карачаево-Черкесия', [u'Карачаево-Черкесская Республика']),
+            (u'Республика Карелия', [u'Карелия']),
+            (u'Кемеровская область', [u'Кемеровская область - Кузбасс', u'Кузбасс']),
+            (u'Республика Коми', [u'Коми']),
+            (u'Марий Эл', [u'Республика Марий Эл']),
+            (u'Республика Алтай', [u'Горный Алтай']),
+            (u'Татарстан', [u'Татария', u'Татарская республика']),
+            (u'Республика Тыва', [u'Тува']),
+            (u'Республика Саха (Якутия)', [u'Якутия']),
+            (u'Северная Осетия — Алания', [u'Северная Осетия - Алания', u'Северная Осетия']),
+            (u'Ханты-Мансийский автономный округ — Югра', [u'Ханты-Мансийский автономный округ - Югра', u'ХМАО - Югра']),
+            (u'Чечня', [u'Чеченская республика']),
+            (u'Чувашия', [u'Чувашская Республика']),
+            (u'Чукотский автономный округ', [u'Чукотка']),
+            (u'Республика Хакасия', [u'Хакасия']),
+            (u'Удмуртия', [u'Удмуртская Республика']),
+        ])
+
     country_names = [
-        'РФ',
-        'Россия',
-        'Российская Федерация',
+        u'РФ',
+        u'Россия',
+        u'Российская Федерация',
     ]
 
     def __init__(self):
@@ -127,7 +149,8 @@ class OSMAddressRUFormatter(object):
     drop_address_probability = 0.6
     drop_address_and_postcode_probability = 0.1
 
-    add_country_probability = 0.01
+    add_country_probability = 0.001
+    state_altname_probability = 0.3
 
     abbreviate_city_probability = 0.3
     abbreviate_state_district_probability = 0.4
@@ -178,6 +201,14 @@ class OSMAddressRUFormatter(object):
         if random.random() < self.add_country_probability:
             address_components[AddressFormatter.COUNTRY] = random.choice(self.country_names)
 
+    def set_state_altname(self, address_components):
+        state = address_components.get(AddressFormatter.STATE)
+        if state:
+            aliases = self.some_state_aliases.get(state)
+            if aliases and random.random() < self.state_altname_probability:
+                address_components[AddressFormatter.STATE] = random.choice(aliases)
+
+
     def normalize_city_name(self, city_name, tags):
         official_status = tags.get('addr:city_official_status')
         if official_status and official_status[:3] == 'ru:':
@@ -185,7 +216,6 @@ class OSMAddressRUFormatter(object):
             city_name = official_status + ' ' + city_name
 
         return city_name
-
 
     def abbreviated_street(self, street, language):
         '''
@@ -206,23 +236,6 @@ class OSMAddressRUFormatter(object):
 
     def fix_component_encodings(self, tags):
         return {k: ftfy.fix_encoding(safe_decode(v)) for k, v in six.iteritems(tags)}
-
-    def num_floors(self, buildings, key='building:levels'):
-        max_floors = None
-        for b in buildings:
-            num_floors = b.get(key)
-            if num_floors is not None:
-                try:
-                    num_floors = int(num_floors)
-                except (ValueError, TypeError):
-                    try:
-                        num_floors = int(float(num_floors))
-                    except (ValueError, TypeError):
-                        continue
-
-                if max_floors is None or num_floors > max_floors:
-                    max_floors = num_floors
-        return max_floors
 
     def formatted_places(self, address_components, country, language, tag_components=True):
         formatted_addresses = []
@@ -261,6 +274,8 @@ class OSMAddressRUFormatter(object):
         self.added_country(address_components)
 
         self.components.abbreviate_admin_components(address_components, country, language)
+
+        self.set_state_altname(address_components)
 
         street = address_components.get(AddressFormatter.ROAD)
         if street:
@@ -312,45 +327,7 @@ class OSMAddressRUFormatter(object):
 
         #sub_building_tags = self.normalize_sub_building_components(tags)
 
-        num_floors = None
-        num_basements = None
-        zone = None
-
         #postal_code = revised_tags.get(AddressFormatter.POSTCODE, None)
-
-        #building_venue_names = []
-
-        # get outside building tags -> fake
-        #building_components = {}
-        #if "building" in tags.keys():
-        #    building_components = [tags] #self.building_components(latitude, longitude)
-
-        #if building_components:
-        #    num_floors = self.num_floors(building_components)
-        #    num_basements = self.num_floors(building_components, key='building:levels:underground')
-
-        #    for building_tags in building_components:
-        #        building_tags = self.normalize_address_components(building_tags)
-
-        #        #building_is_generic_place = building_is_generic_place or self.is_generic_place(building_tags)
-        #        #building_is_known_venue_type = building_is_known_venue_type or self.is_known_venue_type(building_tags)
-
-        #        for k, v in six.iteritems(building_tags):
-        #            if k not in revised_tags and k in (AddressFormatter.HOUSE_NUMBER, AddressFormatter.ROAD):
-        #                revised_tags[k] = v
-        #            #elif k not in revised_tags and k == AddressFormatter.POSTCODE:
-        #            #    expanded_postal_codes = self.expand_postal_codes(v, country, all_local_languages | random_languages, osm_components)
-
-        #            #    if len(expanded_postal_codes) == 1:
-        #            #        revised_tags[AddressFormatter.POSTCODE] = expanded_postal_codes[0]
-        #            elif k == AddressFormatter.HOUSE:
-        #                building_venue_names.append((v, building_is_generic_place, building_is_known_venue_type))
-
-
-        #subdivision_components = self.subdivision_components(latitude, longitude)
-        #if subdivision_components:
-        #    zone = self.zone(subdivision_components)
-
 
 
         #venue_sub_building_prob = float(nested_get(self.config, ('venues', 'sub_building_probability'), default=0.0))
@@ -383,8 +360,8 @@ class OSMAddressRUFormatter(object):
 
         city_name = address_components.get(AddressFormatter.CITY)
         if city_name:
-            if city_name == address_components.get(AddressFormatter.SUBURB):
-                address_components.pop(AddressFormatter.SUBURB)
+            #if city_name == address_components.get(AddressFormatter.SUBURB):
+            #    address_components.pop(AddressFormatter.SUBURB)
             city_name = self.normalize_city_name(city_name, tags)
             address_components[AddressFormatter.CITY] = abbreviate(toponym_abbreviations_gazetteer, city_name, language,
                                                                     abbreviate_prob=self.abbreviate_city_probability)
