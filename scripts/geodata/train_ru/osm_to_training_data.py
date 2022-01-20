@@ -153,6 +153,7 @@ class OSMAddressRUFormatter(object):
     state_altname_probability = 0.3
 
     abbreviate_city_probability = 0.3
+    abbreviate_state_probability = 0.1
     abbreviate_state_district_probability = 0.4
 
     exchange_type_position_probability = 0.25
@@ -365,6 +366,11 @@ class OSMAddressRUFormatter(object):
             city_name = self.normalize_city_name(city_name, tags)
             address_components[AddressFormatter.CITY] = abbreviate(toponym_abbreviations_gazetteer, city_name, language,
                                                                     abbreviate_prob=self.abbreviate_city_probability)
+
+        state = address_components.get(AddressFormatter.STATE)
+        if state:
+            address_components[AddressFormatter.STATE] = abbreviate(toponym_abbreviations_gazetteer, state, language,
+                                                        abbreviate_prob=self.abbreviate_state_probability)
 
         state_district = address_components.get(AddressFormatter.STATE_DISTRICT)
         if state_district:

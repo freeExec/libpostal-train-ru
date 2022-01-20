@@ -34,6 +34,7 @@ class HealthcareLicensesRUFormatter(object):
         ('suburb', AddressFormatter.CITY_DISTRICT),
         ('street', AddressFormatter.ROAD),
         ('house_number', AddressFormatter.HOUSE_NUMBER),
+        ('level', AddressFormatter.LEVEL),
         ('unit', AddressFormatter.UNIT),
     ])
 
